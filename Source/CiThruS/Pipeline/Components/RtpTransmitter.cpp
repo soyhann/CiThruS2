@@ -1,7 +1,7 @@
 #include "RtpTransmitter.h"
 #include "Misc/Debug.h"
 
-RtpTransmitter::RtpTransmitter(const std::string& ip, const int& dstPort)
+RtpTransmitter::RtpTransmitter(const std::string& ip, const int& dstPort, const int& frameRate)
 {
 #ifdef CITHRUS_UVGRTP_AVAILABLE
 	streamSession_ = streamContext_.create_session(ip);
@@ -10,6 +10,11 @@ RtpTransmitter::RtpTransmitter(const std::string& ip, const int& dstPort)
 	if (!stream_)
 	{
 		Debug::Log("Failed to create RTP stream");
+	}
+	else if (frameRate > 0)
+	{
+		stream_->configure_ctx(RCC_FPS_NUMERATOR, frameRate);
+		stream_->configure_ctx(RCC_FPS_DENOMINATOR, 1);
 	}
 #endif // CITHRUS_UVGRTP_AVAILABLE
 

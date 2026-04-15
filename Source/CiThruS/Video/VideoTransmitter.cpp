@@ -14,9 +14,34 @@
 #include "Pipeline/AsyncPipelineRunner.h"
 
 #include "Misc/Debug.h"
+#include "HAL/IConsoleManager.h"
+#include "Engine/Engine.h"
 
 #include <string>
 #include <algorithm>
+
+namespace
+{
+	void ApplyStreamFrameRateLimit(int32 StreamFrameRate)
+	{
+		if (GEngine)
+		{
+			GEngine->bUseFixedFrameRate = true;
+			GEngine->FixedFrameRate = StreamFrameRate;
+			GEngine->SetMaxFPS(StreamFrameRate);
+		}
+
+		if (IConsoleVariable* MaxFps = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS")))
+		{
+			MaxFps->Set(static_cast<float>(StreamFrameRate), ECVF_SetByCode);
+		}
+
+		if (IConsoleVariable* VSync = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync")))
+		{
+			VSync->Set(0, ECVF_SetByCode);
+		}
+	}
+}
 
 AVideoTransmitter::AVideoTransmitter()
 {
@@ -71,9 +96,8 @@ void AVideoTransmitter::PostRegisterAllComponents()
 
 void AVideoTransmitter::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
+	StopTransmitInternal();
 	Super::EndPlay(endPlayReason);
-
-	DeleteStreams();
 }
 
 void AVideoTransmitter::Tick(float deltaTime)
@@ -91,6 +115,15 @@ void AVideoTransmitter::Tick(float deltaTime)
 	{
 		return;
 	}
+
+	const double CaptureInterval = 1.0 / streamFrameRate_;
+	captureAccumulator_ += deltaTime;
+	if (captureAccumulator_ < CaptureInterval)
+	{
+		return;
+	}
+
+	captureAccumulator_ = FMath::Min(captureAccumulator_ - CaptureInterval, CaptureInterval);
 
 	if (capture360_)
 	{
@@ -110,12 +143,15 @@ void AVideoTransmitter::Tick(float deltaTime)
 void AVideoTransmitter::StartTransmit()
 {
 	std::lock_guard<std::mutex> lock(streamMutex_);
+	streamFrameRate_ = FMath::Max(streamFrameRate_, 1);
+	ApplyStreamFrameRateLimit(streamFrameRate_);
 
 	if (ResetStreams())
 	{
 		transmitEnabled_ = true;
 		useEditorTick_ = true;
 		wantsStop_ = false;
+		captureAccumulator_ = 0.0;
 	}
 }
 
@@ -185,8 +221,8 @@ bool AVideoTransmitter::StartStreams()
 						new RgbaToYuvConverter(frameWidth, frameHeight),
 						new HevcEncoder(frameWidth, frameHeight,
 							processingThreadCount_, quantizationParameter_, wavefrontParallelProcessing_, overlappedWavefront_,
-							saveToFile_ ? HevcPresetLossless : HevcPresetMinimumLatency),
-						new RtpTransmitter(TCHAR_TO_UTF8(*remoteStreamIp_), remoteVideoDstPort_)));
+							saveToFile_ ? HevcPresetLossless : HevcPresetMinimumLatency, streamFrameRate_),
+						new RtpTransmitter(TCHAR_TO_UTF8(*remoteStreamIp_), remoteVideoDstPort_, streamFrameRate_)));
 			}
 		}
 		else
@@ -214,8 +250,8 @@ bool AVideoTransmitter::StartStreams()
 						new RgbaToYuvConverter(frameWidth, frameHeight),
 						new HevcEncoder(frameWidth, frameHeight,
 							processingThreadCount_, quantizationParameter_, wavefrontParallelProcessing_, overlappedWavefront_,
-							saveToFile_ ? HevcPresetLossless : HevcPresetMinimumLatency),
-						new RtpTransmitter(TCHAR_TO_UTF8(*remoteStreamIp_), remoteVideoDstPort_)));
+							saveToFile_ ? HevcPresetLossless : HevcPresetMinimumLatency, streamFrameRate_),
+						new RtpTransmitter(TCHAR_TO_UTF8(*remoteStreamIp_), remoteVideoDstPort_, streamFrameRate_)));
 			}
 		}
 	}
@@ -256,4 +292,5 @@ void AVideoTransmitter::StopTransmitInternal()
 	transmitEnabled_ = false;
 	useEditorTick_ = false;
 	wantsStop_ = false;
+	captureAccumulator_ = 0.0;
 }

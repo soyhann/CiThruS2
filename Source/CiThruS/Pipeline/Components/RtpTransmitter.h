@@ -11,7 +11,7 @@
 class CITHRUS_API RtpTransmitter : public PipelineSink<1>
 {
 public:
-	RtpTransmitter(const std::string& ip, const int& dstPort);
+	RtpTransmitter(const std::string& ip, const int& dstPort, const int& frameRate = 0);
 	virtual ~RtpTransmitter();
 
 	virtual void Process() override;

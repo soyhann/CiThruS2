@@ -20,28 +20,23 @@
 #include <string>
 #include <algorithm>
 
-namespace
+/*namespace
 {
 	void ApplyStreamFrameRateLimit(int32 StreamFrameRate)
 	{
+		if (StreamFrameRate <= 0)
+		{
+			return;
+		}
+
 		if (GEngine)
 		{
 			GEngine->bUseFixedFrameRate = true;
 			GEngine->FixedFrameRate = StreamFrameRate;
 			GEngine->SetMaxFPS(StreamFrameRate);
 		}
-
-		if (IConsoleVariable* MaxFps = IConsoleManager::Get().FindConsoleVariable(TEXT("t.MaxFPS")))
-		{
-			MaxFps->Set(static_cast<float>(StreamFrameRate), ECVF_SetByCode);
-		}
-
-		if (IConsoleVariable* VSync = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync")))
-		{
-			VSync->Set(0, ECVF_SetByCode);
-		}
 	}
-}
+}*/
 
 AVideoTransmitter::AVideoTransmitter()
 {
@@ -116,14 +111,17 @@ void AVideoTransmitter::Tick(float deltaTime)
 		return;
 	}
 
-	const double CaptureInterval = 1.0 / streamFrameRate_;
-	captureAccumulator_ += deltaTime;
-	if (captureAccumulator_ < CaptureInterval)
+	if (streamFrameRate_ > 0)
 	{
-		return;
-	}
+		const double CaptureInterval = 1.0 / streamFrameRate_;
+		captureAccumulator_ += deltaTime;
+		if (captureAccumulator_ < CaptureInterval)
+		{
+			return;
+		}
 
-	captureAccumulator_ = FMath::Min(captureAccumulator_ - CaptureInterval, CaptureInterval);
+		captureAccumulator_ = FMath::Min(captureAccumulator_ - CaptureInterval, CaptureInterval);
+	}
 
 	if (capture360_)
 	{
@@ -143,8 +141,8 @@ void AVideoTransmitter::Tick(float deltaTime)
 void AVideoTransmitter::StartTransmit()
 {
 	std::lock_guard<std::mutex> lock(streamMutex_);
-	streamFrameRate_ = FMath::Max(streamFrameRate_, 1);
-	ApplyStreamFrameRateLimit(streamFrameRate_);
+
+	//ApplyStreamFrameRateLimit(streamFrameRate_);
 
 	if (ResetStreams())
 	{

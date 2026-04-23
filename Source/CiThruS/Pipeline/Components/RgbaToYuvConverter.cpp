@@ -55,10 +55,14 @@ void RgbaToYuvConverter::Process()
 
     if (!inputData || inputSize != outputFrameWidth_ * outputFrameHeight_ * 4)
     {
+        GetOutputPin<0>().SetData(nullptr);
+        GetOutputPin<0>().SetSize(0);
         return;
     }
 
 	(this->*converterFunction_)(inputData, &outputData_, outputFrameWidth_, outputFrameHeight_);
+    GetOutputPin<0>().SetData(outputData_);
+    GetOutputPin<0>().SetSize(outputFrameWidth_ * outputFrameHeight_ * 3 / 2);
 }
 
 void RgbaToYuvConverter::RgbaToYuvDefault(const uint8_t* input, uint8_t** output, int width, int height)

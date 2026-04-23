@@ -5,7 +5,6 @@
 #include "CoreMinimal.h"
 
 #include <string>
-#include <chrono>
 
 enum HevcEncoderPreset : uint8_t
 {
@@ -18,7 +17,7 @@ enum HevcEncoderPreset : uint8_t
 class CITHRUS_API HevcEncoder : public PipelineFilter<1, 1>
 {
 public:
-	HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight, const uint8_t& threadCount, const uint8_t& qp, const uint8_t& wpp, const uint8_t& owf, const HevcEncoderPreset& preset = HevcPresetNone);
+	HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight, const uint8_t& threadCount, const uint8_t& qp, const uint8_t& wpp, const uint8_t& owf, const HevcEncoderPreset& preset = HevcPresetNone, const uint32_t& frameRate = 60);
 	virtual ~HevcEncoder();
 
 	virtual void Process() override;
@@ -26,10 +25,10 @@ public:
 protected:
 	uint32_t frameWidth_;
 	uint32_t frameHeight_;
+	uint32_t frameRate_;
 
 	uint8_t* outputData_;
-
-	std::chrono::high_resolution_clock::time_point startTime_;
+	int64_t frameIndex_ = 0;
 
 #ifdef CITHRUS_KVAZAAR_AVAILABLE
 	const kvz_api* kvazaarApi_ = kvz_api_get(8);

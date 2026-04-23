@@ -98,7 +98,7 @@ private:
 
 	inline static bool publishEgoVehicleData_ = true;
 	inline static bool publishCarData_ = true;
-	inline static bool publishParkedCarData_ = true;
+	inline static bool publishParkedCarData_ = false;
 	inline static bool publishPedestrianData_ = true;
 	inline static bool publishCyclistData_ = true;
 

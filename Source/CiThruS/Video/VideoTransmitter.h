@@ -49,6 +49,9 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
 	int remoteStreamHeight_ = 720;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
+	int streamFrameRate_ = 60;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Depth Settings")
 	float fov_ = 60.0f;
 
@@ -94,6 +97,7 @@ private:
 	bool capture360_;
 
 	bool useEditorTick_;
+	double captureAccumulator_ = 0.0;
 
 	virtual void PostRegisterAllComponents() override;
 	virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;

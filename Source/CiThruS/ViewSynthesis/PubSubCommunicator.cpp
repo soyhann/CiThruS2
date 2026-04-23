@@ -6,9 +6,23 @@
 #include "Traffic/Entities/Bicycle.h"
 #include "Traffic/Entities/ITrafficEntity.h"
 #include "Traffic/Parking/ParkingSpace.h"
+#include "Misc/CommandLine.h"
 #include "Misc/GeoUtility.h"
+#include "Misc/Parse.h"
 #include "GeoReferencingSystem.h"
 #include <format>
+
+namespace
+{
+	void ApplyParkedCarsOverride(bool& value)
+	{
+		FString parsedValue;
+		if (FParse::Value(FCommandLine::Get(), TEXT("ParkedCars="), parsedValue))
+		{
+			value = parsedValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+		}
+	}
+}
 
 void UPubSubCommunicator::PublishBool(FString topic, bool value)
 {
@@ -92,11 +106,6 @@ void UPubSubCommunicator::PublishTrafficEntity(FString topic, AActor* actor)
 		= "{\n"
 		"\t\"Timestamp\": \"" + std::format("{:%FT%TZ}", now) + "\",\n"
 		"\t\"Vehicle\": {\n"
-		"\t\t\"Powertrain\": {\n"
-		"\t\t\t\"Transmission\": {\n"
-		"\t\t\t\t\"SelectedGear\": " + std::to_string(selectedGear) + "\n"
-		"\t\t\t}\n"
-		"\t\t},\n"
 		"\t\t\"CurrentLocation\": {\n"
 		"\t\t\t\"Latitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Latitude) + ",\n"
 		"\t\t\t\"Longitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Longitude) + ",\n"
@@ -161,6 +170,8 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 		FVector worldLocation = FVector::ZeroVector;
 		FQuat worldQuat = FQuat::Identity;
 		FVector unrealLinearVelocity = FVector::ZeroVector;
+
+		ApplyParkedCarsOverride(publishParkedCarData_);
 
 		if (AParkingSpace* parkingSpace = Cast<AParkingSpace>(actor))
 		{
@@ -333,6 +344,7 @@ void UPubSubCommunicator::StartMqttClient(FString serverUri, FString username, F
 
 void UPubSubCommunicator::StartFileSaveClient(FString directoryPath, int maxMsgsPerSecond)
 {
+	ApplyParkedCarsOverride(publishParkedCarData_);
 	publisher_ = TSharedPtr<IPublisher>(
 		new FilePublisher(
 			TCHAR_TO_UTF8(*directoryPath),

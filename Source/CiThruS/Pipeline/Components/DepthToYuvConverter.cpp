@@ -16,8 +16,8 @@ DepthToYuvConverter::~DepthToYuvConverter()
 	outputData_ = nullptr;
 	outputSize_ = 0;
 
-	GetOutputPin<0>().SetData(outputData_);
-	GetOutputPin<0>().SetSize(outputSize_);
+	GetOutputPin<0>().SetData(nullptr);
+	GetOutputPin<0>().SetSize(0);
 }
 
 void DepthToYuvConverter::Process()
@@ -27,6 +27,9 @@ void DepthToYuvConverter::Process()
 
 	if (!inputData)
 	{
+		GetOutputPin<0>().SetData(nullptr);
+		GetOutputPin<0>().SetSize(0);
+
 		return;
 	}
 
@@ -36,8 +39,6 @@ void DepthToYuvConverter::Process()
 
 		delete[] outputData_;
 		outputData_ = new uint8_t[outputSize_];
-		GetOutputPin<0>().SetData(outputData_);
-		GetOutputPin<0>().SetSize(outputSize_);
 
 		// Fill chrominance with constant gray as it's not needed/used
 		std::fill_n(outputData_ + inputSize / 4, inputSize / 8, 127);
@@ -51,4 +52,7 @@ void DepthToYuvConverter::Process()
 		{
 			return input[3];
 		});
+
+	GetOutputPin<0>().SetData(outputData_);
+	GetOutputPin<0>().SetSize(outputSize_);
 }

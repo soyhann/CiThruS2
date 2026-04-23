@@ -14,8 +14,8 @@ GammaCompressor::~GammaCompressor()
 	outputData_ = nullptr;
 	outputData_ = 0;
 
-	GetOutputPin<0>().SetData(outputData_);
-	GetOutputPin<0>().SetSize(outputSize_);
+	GetOutputPin<0>().SetData(nullptr);
+	GetOutputPin<0>().SetSize(0);
 }
 
 void GammaCompressor::Process()
@@ -25,6 +25,9 @@ void GammaCompressor::Process()
 
 	if (!inputData)
 	{
+		GetOutputPin<0>().SetData(nullptr);
+		GetOutputPin<0>().SetSize(0);
+
 		return;
 	}
 
@@ -34,8 +37,6 @@ void GammaCompressor::Process()
 
 		delete[] outputData_;
 		outputData_ = new uint8_t[outputSize_];
-		GetOutputPin<0>().SetData(outputData_);
-		GetOutputPin<0>().SetSize(outputSize_);
 	}
 
 	std::transform(
@@ -46,6 +47,9 @@ void GammaCompressor::Process()
 		{
 			return pow(input, 1.0f / gamma_);
 		});
+
+	GetOutputPin<0>().SetData(outputData_);
+	GetOutputPin<0>().SetSize(outputSize_);
 }
 
 void GammaCompressor::OnInputPinsConnected()

@@ -297,8 +297,8 @@ Equirectangular360Converter::~Equirectangular360Converter()
 	outputData_ = nullptr;
 	outputSize_ = 0;
 
-	GetOutputPin<0>().SetData(outputData_);
-	GetOutputPin<0>().SetSize(outputSize_);
+	GetOutputPin<0>().SetData(nullptr);
+	GetOutputPin<0>().SetSize(0);
 }
 
 void Equirectangular360Converter::Process()

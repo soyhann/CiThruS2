@@ -4,7 +4,7 @@
 #include <algorithm>
 
 HevcEncoder::HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight, const uint8_t& threadCount, const uint8_t& qp, const uint8_t& wpp, const uint8_t& owf, const HevcEncoderPreset& preset, const uint32_t& frameRate)
-	: frameWidth_(frameWidth), frameHeight_(frameHeight), frameRate_(std::max(frameRate, 1u)), outputData_(nullptr)
+	: frameWidth_(frameWidth), frameHeight_(frameHeight), frameRate_(frameRate), outputData_(nullptr), frameIndex_(0)
 {
 #ifdef CITHRUS_KVAZAAR_AVAILABLE
 	// Set up Kvazaar for encoding
@@ -48,8 +48,12 @@ HevcEncoder::HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight
 	kvazaarConfig_->width = frameWidth;
 	kvazaarConfig_->height = frameHeight;
 	kvazaarConfig_->hash = KVZ_HASH_NONE;
-	kvazaarConfig_->framerate_num = frameRate_;
-	kvazaarConfig_->framerate_denom = 1;
+
+	if (frameRate_ > 0)
+	{
+		kvazaarConfig_->framerate_num = frameRate_;
+		kvazaarConfig_->framerate_denom = 1;
+	}
 
 	kvazaarConfig_->aud_enable = 0;
 	kvazaarConfig_->calc_psnr = 0;
@@ -76,6 +80,9 @@ HevcEncoder::~HevcEncoder()
 
 	delete[] outputData_;
 	outputData_ = nullptr;
+
+	GetOutputPin<0>().SetData(nullptr);
+	GetOutputPin<0>().SetSize(0);
 }
 
 void HevcEncoder::Process()
@@ -99,8 +106,13 @@ void HevcEncoder::Process()
 	yuvFrame += frameWidth_ * frameHeight_ / 4;
 	memcpy(kvazaarTransmitPicture_->v, yuvFrame, frameWidth_ * frameHeight_ / 4);
 
-	kvazaarTransmitPicture_->pts = frameIndex_;
-	kvazaarTransmitPicture_->dts = frameIndex_;
+	if (frameRate_ > 0 && !kvazaarConfig_->bipred)
+	{
+		// Setting DTS may cause issues if Kvazaar uses B-frames because it changes the order in which the frames should be decoded
+		kvazaarTransmitPicture_->pts = frameIndex_;
+		kvazaarTransmitPicture_->dts = frameIndex_;
+	}
+
 	frameIndex_++;
 
 	kvz_frame_info frame_info;

@@ -55,6 +55,9 @@ void HevcDecoder::Process()
 
     if (!inputData || inputSize == 0)
     {
+        GetOutputPin<0>().SetData(nullptr);
+        GetOutputPin<0>().SetSize(0);
+
         return;
     }
 

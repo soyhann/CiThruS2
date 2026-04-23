@@ -17,7 +17,7 @@ enum HevcEncoderPreset : uint8_t
 class CITHRUS_API HevcEncoder : public PipelineFilter<1, 1>
 {
 public:
-	HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight, const uint8_t& threadCount, const uint8_t& qp, const uint8_t& wpp, const uint8_t& owf, const HevcEncoderPreset& preset = HevcPresetNone, const uint32_t& frameRate = 60);
+	HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight, const uint8_t& threadCount, const uint8_t& qp, const uint8_t& wpp, const uint8_t& owf, const HevcEncoderPreset& preset = HevcPresetNone, const uint32_t& frameRate = 0);
 	virtual ~HevcEncoder();
 
 	virtual void Process() override;
@@ -28,7 +28,7 @@ protected:
 	uint32_t frameRate_;
 
 	uint8_t* outputData_;
-	int64_t frameIndex_ = 0;
+	int64_t frameIndex_;
 
 #ifdef CITHRUS_KVAZAAR_AVAILABLE
 	const kvz_api* kvazaarApi_ = kvz_api_get(8);

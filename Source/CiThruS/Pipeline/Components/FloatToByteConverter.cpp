@@ -13,8 +13,8 @@ FloatToByteConverter::~FloatToByteConverter()
 	outputData_ = nullptr;
 	outputSize_ = 0;
 
-	GetOutputPin<0>().SetData(outputData_);
-	GetOutputPin<0>().SetSize(outputSize_);
+	GetOutputPin<0>().SetData(nullptr);
+	GetOutputPin<0>().SetSize(0);
 }
 
 void FloatToByteConverter::Process()
@@ -24,6 +24,9 @@ void FloatToByteConverter::Process()
 
 	if (!inputData)
 	{
+		GetOutputPin<0>().SetData(nullptr);
+		GetOutputPin<0>().SetSize(0);
+
 		return;
 	}
 
@@ -33,8 +36,6 @@ void FloatToByteConverter::Process()
 
 		delete[] outputData_;
 		outputData_ = new uint8_t[outputSize_];
-		GetOutputPin<0>().SetData(outputData_);
-		GetOutputPin<0>().SetSize(outputSize_);
 	}
 
 	std::transform(
@@ -45,6 +46,9 @@ void FloatToByteConverter::Process()
 		{
 			return static_cast<uint8_t>(std::min(std::max(input, 0.0f), 1.0f) * 255);
 		});
+
+	GetOutputPin<0>().SetData(outputData_);
+	GetOutputPin<0>().SetSize(outputSize_);
 }
 
 void FloatToByteConverter::OnInputPinsConnected()

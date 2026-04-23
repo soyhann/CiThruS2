@@ -28,6 +28,9 @@ void BlinkDetector::Process()
 
 	if (!inputData || inputSize == 0)
 	{
+		GetOutputPin<0>().SetData(nullptr);
+		GetOutputPin<0>().SetSize(0);
+
 		return;
 	}
 
@@ -44,6 +47,9 @@ void BlinkDetector::Process()
 
 		logStream_ << now << " " << (isWhite_ ? "white" : "black") << std::endl;
 	}
+
+	GetOutputPin<0>().SetData(outputFrame_);
+	GetOutputPin<0>().SetSize(outputSize_);
 }
 
 void BlinkDetector::OnInputPinsConnected()

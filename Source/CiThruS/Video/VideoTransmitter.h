@@ -50,7 +50,7 @@ public:
 	int remoteStreamHeight_ = 720;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
-	int streamFrameRate_ = 60;
+	int streamFrameRate_ = 0;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Depth Settings")
 	float fov_ = 60.0f;

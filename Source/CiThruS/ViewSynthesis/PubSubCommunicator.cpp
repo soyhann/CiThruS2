@@ -12,18 +12,6 @@
 #include "GeoReferencingSystem.h"
 #include <format>
 
-namespace
-{
-	void ApplyParkedCarsOverride(bool& value)
-	{
-		FString parsedValue;
-		if (FParse::Value(FCommandLine::Get(), TEXT("ParkedCars="), parsedValue))
-		{
-			value = parsedValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
-		}
-	}
-}
-
 void UPubSubCommunicator::PublishBool(FString topic, bool value)
 {
 	std::string valueAsString = value ? "true" : "false";
@@ -106,6 +94,11 @@ void UPubSubCommunicator::PublishTrafficEntity(FString topic, AActor* actor)
 		= "{\n"
 		"\t\"Timestamp\": \"" + std::format("{:%FT%TZ}", now) + "\",\n"
 		"\t\"Vehicle\": {\n"
+		/*"\t\t\"Powertrain\": {\n"
+		"\t\t\t\"Transmission\": {\n"
+		"\t\t\t\t\"SelectedGear\": " + std::to_string(selectedGear) + "\n"
+		"\t\t\t}\n"
+		"\t\t},\n"*/
 		"\t\t\"CurrentLocation\": {\n"
 		"\t\t\t\"Latitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Latitude) + ",\n"
 		"\t\t\t\"Longitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Longitude) + ",\n"
@@ -170,8 +163,6 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 		FVector worldLocation = FVector::ZeroVector;
 		FQuat worldQuat = FQuat::Identity;
 		FVector unrealLinearVelocity = FVector::ZeroVector;
-
-		ApplyParkedCarsOverride(publishParkedCarData_);
 
 		if (AParkingSpace* parkingSpace = Cast<AParkingSpace>(actor))
 		{
@@ -334,6 +325,8 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 
 void UPubSubCommunicator::StartMqttClient(FString serverUri, FString username, FString password, int maxMsgsPerSecond)
 {
+	ApplyCommandLineParameters();
+
 	publisher_ = TSharedPtr<IPublisher>(
 		new MqttPublisher(
 			TCHAR_TO_UTF8(*serverUri),
@@ -344,7 +337,8 @@ void UPubSubCommunicator::StartMqttClient(FString serverUri, FString username, F
 
 void UPubSubCommunicator::StartFileSaveClient(FString directoryPath, int maxMsgsPerSecond)
 {
-	ApplyParkedCarsOverride(publishParkedCarData_);
+	ApplyCommandLineParameters();
+
 	publisher_ = TSharedPtr<IPublisher>(
 		new FilePublisher(
 			TCHAR_TO_UTF8(*directoryPath),
@@ -439,4 +433,42 @@ void UPubSubCommunicator::PublishInternal(FString topic, uint8_t* data, const si
 	}
 
 	publisher_->Publish(topicPrefix_ + std::string(TCHAR_TO_UTF8(*topic)), data, size);
+}
+
+void UPubSubCommunicator::ApplyCommandLineParameters()
+{
+	FString parsedEgoValue;
+
+	if (FParse::Value(FCommandLine::Get(), TEXT("PublishEgoVehicle="), parsedEgoValue))
+	{
+		publishEgoVehicleData_ = parsedEgoValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+	}
+
+	FString parsedCarsValue;
+
+	if (FParse::Value(FCommandLine::Get(), TEXT("PublishCars="), parsedCarsValue))
+	{
+		publishCarData_ = parsedCarsValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+	}
+
+	FString parsedParkedValue;
+
+	if (FParse::Value(FCommandLine::Get(), TEXT("PublishParkedCars="), parsedParkedValue))
+	{
+		publishParkedCarData_ = parsedParkedValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+	}
+
+	FString parsedPedestriansValue;
+
+	if (FParse::Value(FCommandLine::Get(), TEXT("PublishPedestrians="), parsedPedestriansValue))
+	{
+		publishPedestrianData_ = parsedPedestriansValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+	}
+
+	FString parsedCyclistsValue;
+
+	if (FParse::Value(FCommandLine::Get(), TEXT("PublishCyclists="), parsedCyclistsValue))
+	{
+		publishCyclistData_ = parsedCyclistsValue.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+	}
 }

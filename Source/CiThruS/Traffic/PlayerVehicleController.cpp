@@ -27,6 +27,8 @@ void APlayerVehicleController::BeginPlay()
 
 void APlayerVehicleController::Tick(float deltaTime)
 {
+	Super::Tick(deltaTime);
+
 	TObjectPtr<APawn> pawn = GetPawn();
 
 	if (pawn != nullptr)

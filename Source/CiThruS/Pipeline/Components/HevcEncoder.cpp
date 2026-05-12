@@ -24,8 +24,8 @@ HevcEncoder::HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight
 	{
 	case HevcPresetMinimumLatency:
 		kvazaarApi_->config_parse(kvazaarConfig_, "preset", "ultrafast");
-		kvazaarApi_->config_parse(kvazaarConfig_, "gop", "lp-g8d1t1");
-		kvazaarApi_->config_parse(kvazaarConfig_, "vps-period", "16");
+		kvazaarApi_->config_parse(kvazaarConfig_, "gop", "lp-g8d4t1");
+		kvazaarApi_->config_parse(kvazaarConfig_, "vps-period", "4");
 		kvazaarApi_->config_parse(kvazaarConfig_, "sao", "off");
 		//kvazaarApi_->config_parse(kvazaarConfig_, "slices", "wpp");
 
@@ -55,7 +55,7 @@ HevcEncoder::HevcEncoder(const uint16_t& frameWidth, const uint16_t& frameHeight
 		kvazaarConfig_->framerate_denom = 1;
 	}
 
-	kvazaarConfig_->aud_enable = 0;
+	kvazaarConfig_->aud_enable = true;
 	kvazaarConfig_->calc_psnr = 0;
 
 	kvazaarEncoder_ = kvazaarApi_->encoder_open(kvazaarConfig_);

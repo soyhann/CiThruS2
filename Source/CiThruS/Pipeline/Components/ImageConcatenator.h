@@ -38,6 +38,8 @@ public:
 	{
 		const int frameSize = inputFrameWidth_ * inputFrameHeight_;
 
+		bool missingInput = false;
+
 		TemplateUtility::For<NInputs>([&, this]<uint8_t i>()
 		{
 			const uint8_t* inputData = this->template GetInputPin<i>().GetData();
@@ -45,6 +47,8 @@ public:
 
 			if (!inputData || inputSize != frameSize * 3 / 2)
 			{
+				missingInput = true;
+
 				return;
 			}
 
@@ -55,6 +59,17 @@ public:
 			// Copy V
 			memcpy(outputData_ + frameSize / 4 * i + frameSize * 5 / 4 * NInputs, inputData + frameSize * 5 / 4, frameSize / 4);
 		});
+
+		if (missingInput)
+		{
+			this->template GetOutputPin<0>().SetData(nullptr);
+			this->template GetOutputPin<0>().SetSize(0);
+		}
+		else
+		{
+			this->template GetOutputPin<0>().SetData(outputData_);
+			this->template GetOutputPin<0>().SetSize(frameSize * NInputs * 3 / 2);
+		}
 	}
 
 protected:

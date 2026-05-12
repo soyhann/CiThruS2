@@ -28,14 +28,14 @@ public:
 	virtual void Process() override;
 
 protected:
-	// Start marker 4 bytes + NAL type 1 byte + payload type 1 byte
-	static const uint8_t HEADER_SIZE = 4 + 1 + 1;
+	// Start marker 4 bytes + NAL header 2 bytes + SEI payload type 1 byte
+	static const uint8_t HEADER_SIZE = 4 + 2 + 1;
 	
 	uint8_t header_[HEADER_SIZE] =
 	{
 		0x00, 0x00, 0x00, 0x01, // Start marker
-		0x06,                   // NAL type (SEI message)
-		0x05                    // Payload type (User data unregistered)
+		0b01001110, 0b00000001, // NAL unit header (forbidden_zero_bit, nal_unit_type (PREFIX_SEI_NUT), nuh_layer_id (zero), nuh_temporal_id_plus1)
+		0x05                    // SEI payload type (User data unregistered)
 	};
 
 	std::array<uint8_t, 16> uuid_;

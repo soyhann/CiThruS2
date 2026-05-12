@@ -94,6 +94,21 @@ bool AParkingController::DepartRandomParkedCar()
 	return parkingSpaces_[FMath::RandRange(0, parkingSpaces_.Num() - 1)]->DepartCar();
 }
 
+bool AParkingController::HismInstanceBelongsToParkingSpace(const UHierarchicalInstancedStaticMeshComponent* hism, int hismInstance, const AParkingSpace* parkingSpace) const
+{
+	for (const auto instance : instances_[parkingSpace->GetVisualInstanceId()])
+	{
+		if (std::get<0>(instance) != hism)
+		{
+			continue;
+		}
+
+		return instanceIndices_.find(std::get<0>(instance))->second[std::get<1>(instance)] == hismInstance;
+	}
+
+	return false;
+}
+
 int AParkingController::CreateParkedInstance(FTransform transform, TSubclassOf<ACar>& carClassOut, int& carVariantOut)
 {
 	TArray<TTuple<UClass*, int>> instanceKeys;

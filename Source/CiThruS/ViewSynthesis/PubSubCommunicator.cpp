@@ -6,10 +6,13 @@
 #include "Traffic/Entities/Bicycle.h"
 #include "Traffic/Entities/ITrafficEntity.h"
 #include "Traffic/Parking/ParkingSpace.h"
+#include "Traffic/Parking/ParkingController.h"
 #include "Misc/CommandLine.h"
 #include "Misc/GeoUtility.h"
 #include "Misc/Parse.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "GeoReferencingSystem.h"
+#include "Misc/Debug.h"
 #include <format>
 
 void UPubSubCommunicator::PublishBool(FString topic, bool value)
@@ -253,6 +256,8 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			continue;
 		}
 
+		bool isVisible = IsActorVisible(actor);
+
 		std::string trafficItem
 			= "\t\t{\n"
 			"\t\t\t\"Id\": " + uniqueId + ",\n"
@@ -276,7 +281,8 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			"\t\t\t\t\"Roll\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Roll) + ",\n"
 			"\t\t\t\t\"Pitch\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Pitch) + ",\n"
 			"\t\t\t\t\"Yaw\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Yaw) + "\n"
-			"\t\t\t}\n"
+			"\t\t\t},\n"
+			"\t\t\t\"WarningType\": \"" + (isVisible ? "NO_WARNING" : "BLIND_SPOT_ALERT") + "\"\n"
 			"\t\t}";
 
 		if (!firstTrafficItem)
@@ -380,6 +386,13 @@ void UPubSubCommunicator::SetPublishCyclistData(bool value)
 	publishCyclistData_ = value;
 }
 
+void UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(USceneCaptureComponent2D* camera, float aspectRatio)
+{
+	losTrackedCamera_ = camera;
+	// There is a way to get the aspect ratio from the SceneCaptureComponent, but it doesn't seem to always work correctly
+	losTrackedCameraAspectRatio_ = aspectRatio;
+}
+
 bool UPubSubCommunicator::GetGeoData(
 	AActor* actor,
 	const FVector& ueLocation,
@@ -421,6 +434,94 @@ bool UPubSubCommunicator::GetGeoData(
 	}
 
 	lastPublishedTrafficEntityData_[actor] = { now, geoData };
+
+	return true;
+}
+
+bool UPubSubCommunicator::IsActorVisible(AActor* actor)
+{
+	// If we don't have a camera to track, assume everything is visible
+	if (losTrackedCamera_ == nullptr)
+	{
+		return true;
+	}
+
+	// Raise the position up by half a meter because most traffic entities have their origin at ground level
+	FVector actorLocation = actor->GetActorLocation() + FVector::UpVector * 50.0f;
+
+	// First check if point is inside the view frustrum of the tracked camera
+	FMinimalViewInfo viewInfo{};
+
+	// I don't know why there is a deltaTime parameter here. Why would the length of a frame affect the view?
+	// Looking at the source code of this function, the parameter isn't even used, so I just put 0.1f there
+	losTrackedCamera_->GetCameraView(0.1f, viewInfo);
+
+	FMatrix cameraViewMatrix = FMatrix(
+		viewInfo.Rotation.UnrotateVector(FVector::UnitX()),
+		viewInfo.Rotation.UnrotateVector(FVector::UnitY()),
+		viewInfo.Rotation.UnrotateVector(FVector::UnitZ()),
+		viewInfo.Rotation.UnrotateVector(-viewInfo.Location));
+	FVector4 posInCameraSpace = cameraViewMatrix.TransformPosition(actorLocation);
+
+	// If the X coordinate is negative, the point is behind the camera and thus not visible
+	if (posInCameraSpace.X < 0)
+	{
+		return false;
+	}
+
+	// Point is in front of camera, but we still have to check whether it's outside the edges of the camera view
+	float cameraTanInverse = 1.0f / tan(FMath::DegreesToRadians(viewInfo.FOV / 2.0f));
+
+	// Calculate the projected position of the object in the camera view
+	FVector2D posProjected = FVector2D(
+		posInCameraSpace.Y * cameraTanInverse / posInCameraSpace.X,
+		posInCameraSpace.Z * cameraTanInverse * losTrackedCameraAspectRatio_ / posInCameraSpace.X);
+
+	// The projected space is normalized so the edges are always at -1.0 and 1.0 regardless of resolution or aspect ratio
+	if (posProjected.X < -1.0f || posProjected.X > 1.0f || posProjected.Y < -1.0f || posProjected.Y > 1.0f)
+	{
+		return false;
+	}
+
+	// The point is inside the view frustrum, but it may still be hidden behind something
+	FHitResult hitResult{};
+
+	// Line of sight check. The point isn't visible if the line trace finds something between the camera and the point (that isn't the actor itself)
+	if (actor->GetWorld()->LineTraceSingleByChannel(hitResult, losTrackedCamera_->GetComponentLocation(), actorLocation, ECollisionChannel::ECC_Visibility)
+		&& hitResult.GetActor() != actor)
+	{
+		// Parking spaces use HISMs so checking which one was hit is more complicated
+		if (!hitResult.GetActor()->IsA(AParkingController::StaticClass())
+			|| !hitResult.GetComponent()->IsA(UHierarchicalInstancedStaticMeshComponent::StaticClass())
+			|| !actor->IsA(AParkingSpace::StaticClass()))
+		{
+			//Debug::DrawTemporaryLine(actor->GetWorld(), losTrackedCamera_->GetComponentLocation(), actorLocation, FColor::Red, 0.1f);
+			//Debug::DrawTemporaryLine(actor->GetWorld(), hitResult.ImpactPoint, hitResult.ImpactPoint + FVector::UpVector * 100.0f, FColor::Purple, 0.1f);
+
+			return false;
+		}
+
+		AParkingController* parkingController = Cast<AParkingController>(hitResult.GetActor());
+		UHierarchicalInstancedStaticMeshComponent* hism = Cast<UHierarchicalInstancedStaticMeshComponent>(hitResult.GetComponent());
+		AParkingSpace* parkingSpace = Cast<AParkingSpace>(actor);
+
+		if (parkingSpace->GetParkingController() != parkingController)
+		{
+			return false;
+		}
+
+		int hismInstance = hitResult.Item;
+
+		if (!parkingController->HismInstanceBelongsToParkingSpace(hism, hismInstance, parkingSpace))
+		{
+			//Debug::DrawTemporaryLine(actor->GetWorld(), losTrackedCamera_->GetComponentLocation(), actorLocation, FColor::Red, 0.1f);
+			//Debug::DrawTemporaryLine(actor->GetWorld(), hitResult.ImpactPoint, hitResult.ImpactPoint + FVector::UpVector * 100.0f, FColor::Purple, 0.1f);
+
+			return false;
+		}
+	}
+
+	//Debug::DrawTemporaryLine(actor->GetWorld(), losTrackedCamera_->GetComponentLocation(), actorLocation, FColor::Green, 0.1f);
 
 	return true;
 }

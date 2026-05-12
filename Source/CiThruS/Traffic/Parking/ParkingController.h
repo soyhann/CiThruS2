@@ -32,6 +32,8 @@ public:
 
 	bool DepartRandomParkedCar();
 
+	bool HismInstanceBelongsToParkingSpace(const UHierarchicalInstancedStaticMeshComponent* hism, int hismInstance, const AParkingSpace* parkingSpace) const;
+
 	ATrafficController* GetTrafficController() { return trafficController_; }
 	const TArray<AParkingSpace*>& GetParkingSpaces() const { return parkingSpaces_; }
 

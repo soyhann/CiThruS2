@@ -11,6 +11,7 @@
 #include "PubSubCommunicator.generated.h"
 
 class IPublisher;
+class USceneCaptureComponent2D;
 
 UCLASS()
 class CITHRUS_API UPubSubCommunicator : public UObject
@@ -73,6 +74,9 @@ public:
 	static void SetPublishCyclistData(bool value);
 
 	UFUNCTION(BlueprintCallable)
+	static void SetTrackedCameraForLineOfSightChecks(USceneCaptureComponent2D* camera, float aspectRatio);
+
+	UFUNCTION(BlueprintCallable)
 	static FString GetDefaultSaveDirectory() { return FString(FPlatformProcess::UserDir()) + "CiThruS2/Published/"; }
 
 private:
@@ -102,6 +106,9 @@ private:
 	inline static bool publishPedestrianData_ = true;
 	inline static bool publishCyclistData_ = true;
 
+	inline static USceneCaptureComponent2D* losTrackedCamera_ = nullptr;
+	inline static float losTrackedCameraAspectRatio_ = 1.0f;
+
 	inline static std::unordered_map<AActor*, std::string> trafficEntityIds_;
 	inline static uint64_t lastUsedTrafficEntityId_ = 0;
 	inline static std::unordered_map<AActor*, TrafficEntityData> lastPublishedTrafficEntityData_;
@@ -114,6 +121,8 @@ private:
 		const FQuat& ueRotation,
 		const std::chrono::system_clock::time_point& now,
 		GeoData& geoData);
+
+	static bool IsActorVisible(AActor* actor);
 
 	static void PublishInternal(FString topic, uint8_t* data, const size_t& size);
 

@@ -12,6 +12,7 @@
 #include "Pipeline/Components/FileSink.h"
 #include "Pipeline/Scaffolding/SequentialFilter.h"
 #include "Pipeline/AsyncPipelineRunner.h"
+#include "ViewSynthesis/PubSubCommunicator.h"
 
 #include "Misc/Debug.h"
 #include "HAL/IConsoleManager.h"
@@ -262,6 +263,8 @@ bool AVideoTransmitter::StartStreams()
 		return false;
 	}
 
+	UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(normalCamera_, static_cast<float>(frameWidth) / frameHeight);
+
 	return true;
 }
 
@@ -274,6 +277,8 @@ bool AVideoTransmitter::ResetStreams()
 
 void AVideoTransmitter::DeleteStreams()
 {
+	UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(nullptr, 1.0f);
+
 	delete runner_;
 	runner_ = nullptr;
 

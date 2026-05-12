@@ -35,8 +35,10 @@ public:
 	virtual bool FinishParking();
 
 	void SetParkingController(AParkingController* controller) { parkingController_ = controller; }
+	AParkingController* GetParkingController() const { return parkingController_; }
 	bool HasParkedCar() const { return occupied_ && occupant_ == nullptr && visualInstanceId_ >= 0; }
 	FTransform GetPublishTransform() { return GetParkedTransform(); }
+	int GetVisualInstanceId() const { return visualInstanceId_; }
 
 protected:
 	AParkingSpace() : visualInstanceId_(-1) { }

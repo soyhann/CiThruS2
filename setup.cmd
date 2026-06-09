@@ -1,5 +1,6 @@
 @echo off
 setlocal
+setlocal EnableDelayedExpansion
 
 set AIRSIM_VER=2.1.0
 set DLSS_VER=DLSS-4.5/2026.02.10_UE5.6_DLSS4.5Plugin_v8.5.0
@@ -50,24 +51,34 @@ set powershell=powershell
 where powershell > nul 2>&1
 if errorlevel 1 (
 	echo %COLOR_FAILURE%PowerShell is required by this script; please install it.%COLOR_RESET%
+	set ANY_FAILED=1
 	exit /b 1
 )
 
 exit /b 0
 
 :visualstudiosetup
+set VS_EDITIONS=Enterprise Professional Community Preview
+
 :: Get VS Command Prompt
 if "%VisualStudioVersion%" == "" (
-	echo Starting x64 Native Tools Command Prompt for Visual Studio 2022...
-	:: Try the default installation locations
-    call "%ProgramW6432%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" > nul 2>&1
-	if errorlevel 1 call "%ProgramW6432%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" > nul 2>&1
-	if errorlevel 1 call "%ProgramW6432%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" > nul 2>&1
-	if errorlevel 1 call "%ProgramW6432%\Microsoft Visual Studio\2022\Preview\VC\Auxiliary\Build\vcvars64.bat" > nul 2>&1
-	if errorlevel 1 (
-		echo %COLOR_FAILURE%Could not find x64 Native Tools Command Prompt for Visual Studio 2022 automatically. Please open it manually and run this script in it.%COLOR_RESET%
-		exit /b 1
+	echo Starting x64 Native Tools Command Prompt for Visual Studio 2022 or 2026...
+	
+	REM Try the default installation locations.
+	REM Although previous VS versions were in directories named after the year, i.e. 2019, 2022, for VS 2026 it was changed to 18 instead?
+	REM So let's just check every subdirectory in case Microsoft decides to change the naming scheme or version again
+	for /d %%i in ("%ProgramW6432%\Microsoft Visual Studio\*") do (
+		for %%a in (%VS_EDITIONS%) do (
+			call "%%i\%%a\VC\Auxiliary\Build\vcvars64.bat" 2>nul
+
+			if !errorlevel! == 0 exit /b 0
+		)
 	)
+	
+	echo %COLOR_FAILURE%Could not find x64 Native Tools Command Prompt for Visual Studio 2022 or 2026 automatically. Please open it manually and run this script in it.%COLOR_RESET%
+	set ANY_FAILED=1
+	
+	exit /b 1
 )
 
 exit /b 0
@@ -310,7 +321,11 @@ echo Patching OpenHEVC...
 echo Building OpenHEVC...
 
 cmake temp\openHEVC-%OPENHEVC_VER% -Btemp\openHEVC-%OPENHEVC_VER%\build -DYASM_EXECUTABLE="%ROOT_DIR%temp\Yasm\vsyasm.exe" -DYASM_FOUND=True -DENABLE_STATIC=True || call :buildfailed OpenHEVC && exit /b 1
-msbuild temp\openHEVC-%OPENHEVC_VER%\build\openHEVC.sln /target:LibOpenHevcWrapper /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 || call :buildfailed OpenHEVC && exit /b 1
+
+if exist temp\openHEVC-%OPENHEVC_VER%\build\openHEVC.sln set OPENHEVC_SLN=temp\openHEVC-%OPENHEVC_VER%\build\openHEVC.sln
+if exist temp\openHEVC-%OPENHEVC_VER%\build\openHEVC.slnx set OPENHEVC_SLN=temp\openHEVC-%OPENHEVC_VER%\build\openHEVC.slnx
+
+msbuild %OPENHEVC_SLN% /target:LibOpenHevcWrapper /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 || call :buildfailed OpenHEVC && exit /b 1
 
 :: Copy results
 mkdir ThirdParty\OpenHEVC\Lib
@@ -347,7 +362,10 @@ echo Building uvgRTP...
 mkdir temp\uvgRTP-%UVGRTP_VER%\build
 cmake temp\uvgRTP-%UVGRTP_VER% -Btemp\uvgRTP-%UVGRTP_VER%\build || call :buildfailed uvgRTP && exit /b 1
 
-msbuild temp\uvgRTP-%UVGRTP_VER%\build\uvgrtp.sln /p:Configuration="Release" /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 || call :buildfailed uvgRTP && exit /b 1
+if exist temp\uvgRTP-%UVGRTP_VER%\build\uvgrtp.sln set UVGRTP_SLN=temp\uvgRTP-%UVGRTP_VER%\build\uvgrtp.sln
+if exist temp\uvgRTP-%UVGRTP_VER%\build\uvgrtp.slnx set UVGRTP_SLN=temp\uvgRTP-%UVGRTP_VER%\build\uvgrtp.slnx
+
+msbuild %UVGRTP_SLN% /p:Configuration="Release" /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 || call :buildfailed uvgRTP && exit /b 1
 
 :: Copy results
 mkdir ThirdParty\uvgRTP\Lib
@@ -429,7 +447,10 @@ echo Building Eclipse Paho...
 mkdir temp\paho.mqtt.cpp-%PAHO_CPP_VER%\build
 cmake temp\paho.mqtt.cpp-%PAHO_CPP_VER% -Btemp\paho.mqtt.cpp-%PAHO_CPP_VER%\build -DPAHO_WITH_MQTT_C=ON -DPAHO_BUILD_STATIC=ON -DPAHO_BUILD_SHARED=OFF -DPAHO_WITH_SSL=ON || call :buildfailed "Eclipse Paho" && exit /b 1
 
-msbuild temp\paho.mqtt.cpp-%PAHO_CPP_VER%\build\PahoMqttCpp.sln /p:Configuration="Release" /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 || call :buildfailed "Eclipse Paho" && exit /b 1
+if exist temp\paho.mqtt.cpp-%PAHO_CPP_VER%\build\PahoMqttCpp.sln set PAHO_CPP_SLN=temp\paho.mqtt.cpp-%PAHO_CPP_VER%\build\PahoMqttCpp.sln
+if exist temp\paho.mqtt.cpp-%PAHO_CPP_VER%\build\PahoMqttCpp.slnx set PAHO_CPP_SLN=temp\paho.mqtt.cpp-%PAHO_CPP_VER%\build\PahoMqttCpp.slnx
+
+msbuild %PAHO_CPP_SLN% /p:Configuration="Release" /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 || call :buildfailed "Eclipse Paho" && exit /b 1
 
 :: Copy results
 mkdir ThirdParty\PahoCpp\Bin

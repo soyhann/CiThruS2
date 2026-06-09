@@ -223,21 +223,6 @@ echo %COLOR_SUCCESS%AMD FSR 4 successfully set up.%COLOR_RESET%
 
 exit /b 0
 
-:impostorbakersetup
-call :dependencymissing Plugins\ImpostorBaker-master "ImpostorBaker" && exit /b 0
-
-:: Download
-echo Downloading ImpostorBaker...
-%powershell% -command "(New-Object Net.WebClient).DownloadFile('https://github.com/ictusbrucks/ImpostorBaker/archive/refs/heads/master.zip', 'temp\impostorbaker.zip')" || call :downloadfailed ImpostorBaker && exit /b 1
-echo Extracting ImpostorBaker...
-%powershell% -command "Expand-Archive -Path temp\ImpostorBaker.zip -DestinationPath Plugins"
-del temp\ImpostorBaker.zip /q
-
-:: Finish
-echo %COLOR_SUCCESS%ImpostorBaker successfully set up.%COLOR_RESET%
-
-exit /b 0
-
 :kvazaarsetup
 call :dependencymissing ThirdParty\Kvazaar "Kvazaar" && exit /b 0
 
@@ -486,7 +471,6 @@ call :contentsetup
 ::call :airsimsetup
 call :dlsssetup
 call :fsrsetup
-call :impostorbakersetup
 call :kvazaarsetup
 call :openhevcsetup
 call :uvgrtpsetup

@@ -186,13 +186,14 @@ TArray<AActor*> ATrafficController::GetEntitiesInArea(FVector center3d, FVector 
 ACar* ATrafficController::SpawnCar()
 {
 	int spawnPoint = roadGraph_.GetRandomSpawnPoint();
-
-	return SpawnCar(roadGraph_.GetKeypointPosition(spawnPoint), roadGraph_.GetKeypointRotation(spawnPoint), true, templateCars_[FMath::RandRange(0, templateCars_.Num() - 1)], -1);
+	int carVariant = FMath::RandRange(0, templateCars_.Num() - 1);
+	return SpawnCar(roadGraph_.GetKeypointPosition(spawnPoint), roadGraph_.GetKeypointRotation(spawnPoint), true, templateCars_[carVariant], carVariant);
 }
 
 ACar* ATrafficController::SpawnCar(const FVector& position, const FRotator& rotation, const bool& simulate)
 {
-	return SpawnCar(position, rotation, simulate, templateCars_[FMath::RandRange(0, templateCars_.Num() - 1)], -1);
+	int carVariant = FMath::RandRange(0, templateCars_.Num() - 1);
+	return SpawnCar(position, rotation, simulate, templateCars_[carVariant], carVariant);
 }
 
 ACar* ATrafficController::SpawnCar(const FVector& position, const FRotator& rotation, const bool& simulate, const TSubclassOf<ACar>& carClass, const int& carVariant)

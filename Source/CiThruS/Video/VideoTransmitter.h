@@ -49,11 +49,11 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
 	int remoteStreamHeight_ = 720;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
-	int streamFrameRate_ = 0;
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Depth Settings")
 	float fov_ = 60.0f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
+	int streamFrameRate_ = 0;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "General Stream Settings")
 	int processingThreadCount_ = 8;
@@ -65,13 +65,16 @@ public:
 	FString saveDirectory_ = FString(FPlatformProcess::UserDir()) + "CiThruS2/Recorded/";
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Kvazaar Settings")
-	int overlappedWavefront_ = 3;
+	int overlappedWavefront_ = 0;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Kvazaar Settings")
 	int wavefrontParallelProcessing_ = 1;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Kvazaar Settings")
 	int quantizationParameter_ = 27;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Encoder Settings")
+	bool useNvenc_ = true;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "360 Stream Settings")
 	bool enable360Capture_ = false;
@@ -82,9 +85,12 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "360 Stream Settings")
 	bool bilinearFiltering_ = true;
 
-private:
+protected:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Capture")
 	TArray<USceneCaptureComponent2D*> cubemapCameras_;
-	USceneCaptureComponent2D* normalCamera_;
+
+private:
 
 	AsyncPipelineRunner* runner_;
 	RenderTargetReader* reader_;

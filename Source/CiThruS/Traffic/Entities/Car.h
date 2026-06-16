@@ -86,11 +86,11 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	int GetVariantId();
-	int GetVariantId_Implementation() { return 0; }
+	int GetVariantId_Implementation() { return variantId_; }
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	void SetVariantId(int variantId);
-	void SetVariantId_Implementation(int variantId) { }
+	void SetVariantId_Implementation(int variantId) { variantId_ = variantId; }
 
 	virtual void OnEnteredStopArea(ATrafficStopArea* stopArea) override;
 	virtual void OnExitedStopArea(ATrafficStopArea* stopArea) override;
@@ -149,6 +149,9 @@ public:
 	TArray<FVector> DEBUG_GetPath();
 
 protected:
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Traffic System|Vehicle Properties")
+	int variantId_ = 0;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Traffic System|Vehicle Properties")
 	float targetSpeed_ = 500.0f;
 

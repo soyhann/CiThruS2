@@ -7,13 +7,15 @@
 #include "Traffic/Entities/ITrafficEntity.h"
 #include "Traffic/Parking/ParkingSpace.h"
 #include "Traffic/Parking/ParkingController.h"
+#include "Traffic/TrafficCollisionHelper.h"
 #include "Misc/CommandLine.h"
 #include "Misc/GeoUtility.h"
 #include "Misc/Parse.h"
-#include "Components/SceneCaptureComponent2D.h"
+#include "Camera/CameraComponent.h"
 #include "GeoReferencingSystem.h"
 #include "Misc/Debug.h"
 #include <format>
+#include "JsonObjectConverter.h"
 
 void UPubSubCommunicator::PublishBool(FString topic, bool value)
 {
@@ -93,50 +95,63 @@ void UPubSubCommunicator::PublishTrafficEntity(FString topic, AActor* actor)
 		return;
 	}
 
-	std::string valueAsString
-		= "{\n"
-		"\t\"Timestamp\": \"" + std::format("{:%FT%TZ}", now) + "\",\n"
-		"\t\"Vehicle\": {\n"
-		/*"\t\t\"Powertrain\": {\n"
-		"\t\t\t\"Transmission\": {\n"
-		"\t\t\t\t\"SelectedGear\": " + std::to_string(selectedGear) + "\n"
-		"\t\t\t}\n"
-		"\t\t},\n"*/
-		"\t\t\"CurrentLocation\": {\n"
-		"\t\t\t\"Latitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Latitude) + ",\n"
-		"\t\t\t\"Longitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Longitude) + ",\n"
-		"\t\t\t\"Altitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Altitude) + "\n"
-		"\t\t},\n"
-		"\t\t\"CurrentRotation\": {\n"
-		"\t\t\t\"Roll\": " + std::format("{:.8f}", geoData.tangentRotation.Roll) + ",\n"
-		"\t\t\t\"Pitch\": " + std::format("{:.8f}", geoData.tangentRotation.Pitch) + ",\n"
-		"\t\t\t\"Yaw\": " + std::format("{:.8f}", geoData.tangentRotation.Yaw) + "\n"
-		"\t\t},\n"
-		"\t\t\"LinearVelocity\": {\n"
-		"\t\t\t\"Lateral\": " + std::format("{:.8f}", geoData.linearVelocityEnuMps.X) + ",\n"
-		"\t\t\t\"Longitudinal\": " + std::format("{:.8f}", geoData.linearVelocityEnuMps.Y) + ",\n"
-		"\t\t\t\"Vertical\": " + std::format("{:.8f}", geoData.linearVelocityEnuMps.Z) + "\n"
-		"\t\t},\n"
-		"\t\t\"AngularVelocity\": {\n"
-		"\t\t\t\"Roll\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Roll) + ",\n"
-		"\t\t\t\"Pitch\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Pitch) + ",\n"
-		"\t\t\t\"Yaw\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Yaw) + "\n"
-		"\t\t}\n"
-		"\t}\n"
-		"}";
+	FEgoMessage Message;
+
+	Message.Timestamp = FString(std::format("{:%FT%TZ}", now).c_str());
+
+	Message.Vehicle.CurrentLocation = {
+		geoData.geographicCoordinates.Latitude,
+		geoData.geographicCoordinates.Longitude,
+		geoData.geographicCoordinates.Altitude
+	};
+
+	Message.Vehicle.CurrentRotation = {
+		geoData.tangentRotation.Roll,
+		geoData.tangentRotation.Pitch,
+		geoData.tangentRotation.Yaw
+	};
+
+	Message.Vehicle.LinearVelocity = {
+		geoData.linearVelocityEnuMps.X,
+		geoData.linearVelocityEnuMps.Y,
+		geoData.linearVelocityEnuMps.Z
+	};
+
+	Message.Vehicle.AngularVelocity = {
+		geoData.tangentAngularVelocity.Roll,
+		geoData.tangentAngularVelocity.Pitch,
+		geoData.tangentAngularVelocity.Yaw
+	};
 
 	lastPublishedEgoActor_ = actor;
 
-	PublishInternal(topic, reinterpret_cast<uint8_t*>(valueAsString.data()), valueAsString.size());
+	FString JsonString;
+	FJsonObjectConverter::UStructToJsonObjectString(Message, JsonString);
+
+	std::string utf8 = TCHAR_TO_UTF8(*JsonString);
+	PublishInternal(topic, reinterpret_cast<uint8_t*>(utf8.data()), utf8.size());
 }
 
 void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor*>& trafficEntities)
 {
 	const std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+
+	FTrafficArrayMessage Message;
+	Message.Timestamp = FString(std::format("{:%FT%TZ}", now).c_str());
+
 	TSet<AActor*> sentTrafficActors;
 
-	std::string trafficItems;
 	bool firstTrafficItem = true;
+
+	FVector EgoPos = FVector::ZeroVector;
+	FVector EgoVel = FVector::ZeroVector;
+	float EgoRadius = 120.0f;
+
+	if (lastPublishedEgoActor_ != nullptr)
+	{
+		EgoPos = lastPublishedEgoActor_->GetActorLocation();
+		EgoVel = lastPublishedEgoActor_->GetVelocity();
+	}
 
 	for (AActor* actor : trafficEntities)
 	{
@@ -145,7 +160,7 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			continue;
 		}
 
-		std::string type = "Unknown";
+		FString type = "Unknown";
 		const ITrafficEntity* trafficEntity = nullptr;
 
 		auto existingId = trafficEntityIds_.find(actor);
@@ -163,9 +178,12 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 
 		bool isParkedCar = false;
 
+		float entityRadius = 120.0f;
+
 		FVector worldLocation = FVector::ZeroVector;
 		FQuat worldQuat = FQuat::Identity;
 		FVector unrealLinearVelocity = FVector::ZeroVector;
+		int32 vehicleType = -1;
 
 		if (AParkingSpace* parkingSpace = Cast<AParkingSpace>(actor))
 		{
@@ -182,8 +200,9 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			worldLocation = parkedTransform.GetLocation();
 			worldQuat = parkedTransform.GetRotation();
 			unrealLinearVelocity = FVector::ZeroVector;
+			vehicleType = -1; // TODO Type from parked car
 		}
-		else if (actor->IsA(ACar::StaticClass()))
+		else if (ACar* car = Cast<ACar>(actor))
 		{
 			if (!publishCarData_)
 			{
@@ -191,9 +210,10 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			}
 
 			type = "Car";
-			trafficEntity = Cast<ACar>(actor);
+			trafficEntity = car;
+			vehicleType = car->GetVariantId();
 		}
-		else if (actor->IsA(APedestrian::StaticClass()))
+		else if (APedestrian* pedestrian = Cast<APedestrian>(actor))
 		{
 			if (!publishPedestrianData_)
 			{
@@ -201,9 +221,10 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			}
 
 			type = "Pedestrian";
-			trafficEntity = Cast<APedestrian>(actor);
+			trafficEntity = pedestrian;
+			entityRadius = 60.0f;
 		}
-		else if (actor->IsA(ABicycle::StaticClass()))
+		else if (ABicycle* bicycle = Cast<ABicycle>(actor))
 		{
 			if (!publishCyclistData_)
 			{
@@ -211,7 +232,8 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 			}
 
 			type = "Bicycle";
-			trafficEntity = Cast<ABicycle>(actor);
+			trafficEntity = bicycle;
+			entityRadius = 60.0f;
 		}
 		else
 		{
@@ -232,7 +254,7 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 
 			if (useInterfaceVelocity && trafficEntity != nullptr)
 			{
-				if (trafficEntity->Stopped())
+				if (trafficEntity->Stopped() || trafficEntity->Blocked())
 				{
 					unrealLinearVelocity = FVector::ZeroVector;
 				}
@@ -258,41 +280,63 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 
 		bool isVisible = IsActorVisible(actor);
 
-		std::string trafficItem
-			= "\t\t{\n"
-			"\t\t\t\"Id\": " + uniqueId + ",\n"
-			"\t\t\t\"Type\": \"" + type + "\",\n"
-			"\t\t\t\"CurrentLocation\": {\n"
-			"\t\t\t\t\"Latitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Latitude) + ",\n"
-			"\t\t\t\t\"Longitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Longitude) + ",\n"
-			"\t\t\t\t\"Altitude\": " + std::format("{:.8f}", geoData.geographicCoordinates.Altitude) + "\n"
-			"\t\t\t},\n"
-			"\t\t\t\"CurrentRotation\": {\n"
-			"\t\t\t\t\"Roll\": " + std::format("{:.8f}", geoData.tangentRotation.Roll) + ",\n"
-			"\t\t\t\t\"Pitch\": " + std::format("{:.8f}", geoData.tangentRotation.Pitch) + ",\n"
-			"\t\t\t\t\"Yaw\": " + std::format("{:.8f}", geoData.tangentRotation.Yaw) + "\n"
-			"\t\t\t},\n"
-			"\t\t\t\"LinearVelocity\": {\n"
-			"\t\t\t\t\"Lateral\": " + std::format("{:.8f}", geoData.linearVelocityEnuMps.X) + ",\n"
-			"\t\t\t\t\"Longitudinal\": " + std::format("{:.8f}", geoData.linearVelocityEnuMps.Y) + ",\n"
-			"\t\t\t\t\"Vertical\": " + std::format("{:.8f}", geoData.linearVelocityEnuMps.Z) + "\n"
-			"\t\t\t},\n"
-			"\t\t\t\"AngularVelocity\": {\n"
-			"\t\t\t\t\"Roll\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Roll) + ",\n"
-			"\t\t\t\t\"Pitch\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Pitch) + ",\n"
-			"\t\t\t\t\"Yaw\": " + std::format("{:.8f}", geoData.tangentAngularVelocity.Yaw) + "\n"
-			"\t\t\t},\n"
-			"\t\t\t\"WarningType\": \"" + (isVisible ? "NO_WARNING" : "BLIND_SPOT_ALERT") + "\"\n"
-			"\t\t}";
+		FTrafficCollisionResult collisionResult;
+		bool bCollisionRisk = false;
 
-		if (!firstTrafficItem)
+		if (lastPublishedEgoActor_ != nullptr && actor != lastPublishedEgoActor_)
 		{
-			trafficItems += ",\n";
+			bCollisionRisk = FTrafficCollisionHelper::CheckCollisionRisk(
+				EgoPos,
+				EgoVel,
+				EgoRadius,
+				worldLocation,
+				unrealLinearVelocity,
+				entityRadius,
+				3.0f,
+				collisionResult
+			);
 		}
 
-		firstTrafficItem = false;
-		trafficItems += trafficItem;
+		FTrafficItemMessage Item;
+
+		Item.Id = FString(uniqueId.c_str());
+		Item.Type = type;
+		Item.VehicleType = vehicleType;
+		Item.Parked = isParkedCar;
+
+		// Blind spot and collision are independent: an out-of-sight object can also be on a
+		// collision course, so both flags are reported rather than collapsed into one warning.
+		Item.Warnings.BlindSpotAlert = !isVisible;
+		Item.Warnings.CollisionAlert = bCollisionRisk;
+		Item.Warnings.TimeToImpact = collisionResult.TimeToImpact;
+
+		Item.CurrentLocation = {
+			geoData.geographicCoordinates.Latitude,
+			geoData.geographicCoordinates.Longitude,
+			geoData.geographicCoordinates.Altitude
+		};
+
+		Item.CurrentRotation = {
+			geoData.tangentRotation.Roll,
+			geoData.tangentRotation.Pitch,
+			geoData.tangentRotation.Yaw
+		};
+
+		Item.LinearVelocity = {
+			geoData.linearVelocityEnuMps.X,
+			geoData.linearVelocityEnuMps.Y,
+			geoData.linearVelocityEnuMps.Z
+		};
+
+		Item.AngularVelocity = {
+			geoData.tangentAngularVelocity.Roll,
+			geoData.tangentAngularVelocity.Pitch,
+			geoData.tangentAngularVelocity.Yaw
+		};
+
+		Message.Traffic.Add(Item);
 		sentTrafficActors.Add(actor);
+
 	}
 
 	// Drop stale traffic entries so actors that disappear/reappear don't accumulate stale angular-rate state.
@@ -312,21 +356,13 @@ void UPubSubCommunicator::PublishTrafficArray(FString topic, const TArray<AActor
 		++it;
 	}
 
-	std::string valueAsString
-		= "{\n"
-		"\t\"Timestamp\": \"" + std::format("{:%FT%TZ}", now) + "\",\n"
-		"\t\"Traffic\": [";
+	FString JsonString;
+	FJsonObjectConverter::UStructToJsonObjectString(Message, JsonString);
 
-	if (!trafficItems.empty())
-	{
-		valueAsString += "\n";
-		valueAsString += trafficItems;
-		valueAsString += "\n\t";
-	}
-
-	valueAsString += "]\n}";
-
-	PublishInternal(topic, reinterpret_cast<uint8_t*>(valueAsString.data()), valueAsString.size());
+	std::string utf8 = TCHAR_TO_UTF8(*JsonString);
+	PublishInternal(topic,
+		reinterpret_cast<uint8_t*>(utf8.data()),
+		utf8.size());
 }
 
 void UPubSubCommunicator::StartMqttClient(FString serverUri, FString username, FString password, int maxMsgsPerSecond)
@@ -386,10 +422,9 @@ void UPubSubCommunicator::SetPublishCyclistData(bool value)
 	publishCyclistData_ = value;
 }
 
-void UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(USceneCaptureComponent2D* camera, float aspectRatio)
+void UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(UCameraComponent* camera, float aspectRatio)
 {
 	losTrackedCamera_ = camera;
-	// There is a way to get the aspect ratio from the SceneCaptureComponent, but it doesn't seem to always work correctly
 	losTrackedCameraAspectRatio_ = aspectRatio;
 }
 
@@ -477,8 +512,12 @@ bool UPubSubCommunicator::IsActorVisible(AActor* actor)
 		posInCameraSpace.Y * cameraTanInverse / posInCameraSpace.X,
 		posInCameraSpace.Z * cameraTanInverse * losTrackedCameraAspectRatio_ / posInCameraSpace.X);
 
+	// Margin to prevent actors being "not visible" when they are still partly on screen. 
+	// TODO: Proper view projection to actor collider intersect
+	float margin = 0.07f;
+
 	// The projected space is normalized so the edges are always at -1.0 and 1.0 regardless of resolution or aspect ratio
-	if (posProjected.X < -1.0f || posProjected.X > 1.0f || posProjected.Y < -1.0f || posProjected.Y > 1.0f)
+	if (posProjected.X < -1.0f - margin || posProjected.X > 1.0f + margin || posProjected.Y < -1.0f - margin || posProjected.Y > 1.0f + margin)
 	{
 		return false;
 	}

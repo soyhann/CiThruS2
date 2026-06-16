@@ -2,8 +2,10 @@
 
 #include "Pipeline/Pipeline.h"
 #include "Pipeline/Components/HevcEncoder.h"
+#include "Pipeline/Components/NvencHevcEncoder.h"
 #include "Pipeline/Components/RtpTransmitter.h"
 #include "Pipeline/Components/RenderTargetReader.h"
+#include "Pipeline/Components/BackBufferReader.h"
 #include "Pipeline/Components/RgbaToYuvConverter.h"
 #include "Pipeline/Components/Equirectangular360Converter.h"
 #include "Pipeline/Components/SolidColorImageGenerator.h"
@@ -12,14 +14,16 @@
 #include "Pipeline/Components/FileSink.h"
 #include "Pipeline/Scaffolding/SequentialFilter.h"
 #include "Pipeline/AsyncPipelineRunner.h"
-#include "ViewSynthesis/PubSubCommunicator.h"
 
 #include "Misc/Debug.h"
 #include "HAL/IConsoleManager.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "UnrealClient.h"
 
 #include <string>
 #include <algorithm>
+#include <stdexcept>
 
 /*namespace
 {
@@ -62,9 +66,6 @@ AVideoTransmitter::AVideoTransmitter()
 		cubemapCameras_.Add(sceneCaptureComponent);
 	}
 
-	normalCamera_ = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("PerspectiveSceneCaptureComponent"));
-	normalCamera_->SetupAttachment(RootComponent);
-
 	PrimaryActorTick.bCanEverTick = true;
 }
 
@@ -81,13 +82,10 @@ void AVideoTransmitter::PostRegisterAllComponents()
 		camera->TextureTarget->RenderTargetFormat = RTF_RGBA8_SRGB;
 		camera->bCaptureEveryFrame = false;
 		camera->bCaptureOnMovement = false;
+		camera->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+		camera->PostProcessBlendWeight = 1.0f;
+		camera->ShowFlags.SetLensFlares(false);
 	}
-
-	normalCamera_->TextureTarget = NewObject<UTextureRenderTarget2D>();
-	normalCamera_->TextureTarget->InitCustomFormat(RENDER_TARGET_DEFAULT_RESOLUTION, RENDER_TARGET_DEFAULT_RESOLUTION, PF_B8G8R8A8, false);
-	normalCamera_->TextureTarget->RenderTargetFormat = RTF_RGBA8_SRGB;
-	normalCamera_->bCaptureEveryFrame = false;
-	normalCamera_->bCaptureOnMovement = false;
 }
 
 void AVideoTransmitter::EndPlay(const EEndPlayReason::Type endPlayReason)
@@ -130,13 +128,10 @@ void AVideoTransmitter::Tick(float deltaTime)
 		{
 			camera->CaptureScene();
 		}
-	}
-	else
-	{
-		normalCamera_->CaptureScene();
-	}
 
-	reader_->Read();
+		reader_->Read();
+	}
+	// Non-360: BackBufferReader captures the game window asynchronously via Slate's OnBackBufferReadyToPresent — nothing to drive from the actor tick
 }
 
 void AVideoTransmitter::StartTransmit()
@@ -226,26 +221,47 @@ bool AVideoTransmitter::StartStreams()
 		}
 		else
 		{
-			normalCamera_->FOVAngle = fov_;
-			normalCamera_->TextureTarget->ResizeTarget(frameWidth, frameHeight);
+			// We stream the actual game backbuffer, so a game viewport must already exist (PIE or standalone game)
+			if (GEngine == nullptr || GEngine->GameViewport == nullptr || GEngine->GameViewport->Viewport == nullptr)
+			{
+				throw std::runtime_error("No game viewport available — video streaming requires PIE or a standalone game window");
+			}
 
-			std::vector<UTextureRenderTarget2D*> renderTargets = { normalCamera_->TextureTarget };
+			const FIntPoint viewportSize = GEngine->GameViewport->Viewport->GetSizeXY();
 
-			reader_ = new RenderTargetReader(renderTargets);
+			// HEVC requires width/height divisible by 8; round DOWN so we never read past the backbuffer edge
+			frameWidth = static_cast<uint16_t>(std::max<int32>(viewportSize.X - (viewportSize.X % 8), 16));
+			frameHeight = static_cast<uint16_t>(std::max<int32>(viewportSize.Y - (viewportSize.Y % 8), 16));
+
+			UE_LOG(LogTemp, Display,
+				TEXT("VideoTransmitter: starting backbuffer stream at %dx%d (viewport=%dx%d), saveToFile=%d, ip=%s, port=%d"),
+				frameWidth, frameHeight, viewportSize.X, viewportSize.Y,
+				saveToFile_ ? 1 : 0, *remoteStreamIp_, remoteVideoDstPort_);
+
+			BackBufferReader* backBufferReader = new BackBufferReader(frameWidth, frameHeight);
 
 			if (saveToFile_)
 			{
 				runner_ = new AsyncPipelineRunner(
 					new Pipeline(
-						reader_,
+						backBufferReader,
 						new BgraToRgbaConverter(),
 						new PngRecorder(TCHAR_TO_UTF8(*saveDirectory_), frameWidth, frameHeight)));
+			}
+			else if (useNvenc_)
+			{
+				runner_ = new AsyncPipelineRunner(
+					new Pipeline(
+						backBufferReader,
+						new NvencHevcEncoder(frameWidth, frameHeight,
+							static_cast<uint8_t>(quantizationParameter_), streamFrameRate_),
+						new RtpTransmitter(TCHAR_TO_UTF8(*remoteStreamIp_), remoteVideoDstPort_, streamFrameRate_)));
 			}
 			else
 			{
 				runner_ = new AsyncPipelineRunner(
 					new Pipeline(
-						reader_,
+						backBufferReader,
 						new RgbaToYuvConverter(frameWidth, frameHeight),
 						new HevcEncoder(frameWidth, frameHeight,
 							processingThreadCount_, quantizationParameter_, wavefrontParallelProcessing_, overlappedWavefront_,
@@ -263,8 +279,6 @@ bool AVideoTransmitter::StartStreams()
 		return false;
 	}
 
-	UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(normalCamera_, static_cast<float>(frameWidth) / frameHeight);
-
 	return true;
 }
 
@@ -277,8 +291,6 @@ bool AVideoTransmitter::ResetStreams()
 
 void AVideoTransmitter::DeleteStreams()
 {
-	UPubSubCommunicator::SetTrackedCameraForLineOfSightChecks(nullptr, 1.0f);
-
 	delete runner_;
 	runner_ = nullptr;
 
